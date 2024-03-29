@@ -120,12 +120,22 @@ public class ScadaHost : BackgroundService
                 var notification = new TagChangedNotification(topicId, machineId, jsonDb);
                 _buffer.Update(notification);
 
-                string jsonNoti = JsonConvert.SerializeObject(notification);
+                var oeeSend = new OeeSend
+                {
+                    DeviceId= machineId,
+                    IdleTime= oee.it,
+                    OperationTime= oee.st,
+                    Oee = A * P,
+                    ShiftTime= oee.st,
+                    Timestamp = oee.timestamp,
+                    Topic = topicId,
+				};
+                string jsonNoti = JsonConvert.SerializeObject(oeeSend);
                 jsonNoti = jsonNoti.Replace("\\", "");
                 jsonNoti = jsonNoti.Replace("\r", "");
                 jsonNoti = jsonNoti.Replace("\n", "");
                 jsonNoti = jsonNoti.Replace(" ", "");
-                await _hubContext.Clients.All.SendAsync("TagChanged", jsonNoti);
+                await _hubContext.Clients.All.SendAsync("OeeChanged", jsonNoti);
 
                 break;
 

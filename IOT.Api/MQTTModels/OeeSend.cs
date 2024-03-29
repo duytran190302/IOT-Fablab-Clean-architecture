@@ -2,11 +2,12 @@
 {
 	public class OeeSend
 	{
-		public string machineId { get; set; }
-		public DateTime timestamp { get; set; }
-		public float oee { get; set; }
-		public float st { get; set; }
-		public float it { get; set; }
-		public float ot { get; set; }
+		public string Topic { get; set; }
+		public string DeviceId { get; set; }
+		public DateTime Timestamp { get; set; }
+		public float IdleTime { get; set; }
+		public float ShiftTime { get; set; }
+		public float OperationTime { get; set; }
+		public float Oee { get; set; }
 	}
 }

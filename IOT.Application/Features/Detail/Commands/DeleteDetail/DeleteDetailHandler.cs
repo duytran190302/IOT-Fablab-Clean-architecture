@@ -17,6 +17,7 @@ namespace IOT.Application.Features.Detail.Commands.DeleteDetail
 		public DeleteDetailHandler(IUnitOfWork unitOfWork)
 		{
 			_unitOfWork = unitOfWork;
+
 		}
 		public async Task<string> Handle(DeleteDetail request, CancellationToken cancellationToken)
 		{

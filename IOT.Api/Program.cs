@@ -22,13 +22,22 @@ namespace IOT.Api
 			builder.Services.AddPersistenceServices(builder.Configuration);
 
 			builder.Services.AddControllers();
-
-			builder.Services.AddCors(options =>
-			{
-				options.AddPolicy("all", builder => builder.AllowAnyOrigin()
-				.AllowAnyHeader()
-				.AllowAnyMethod());
-			});
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder
+			//.AllowAnyOrigin()
+            .WithOrigins("localhost", 
+			"http://localhost:5173",
+			"http://localhost:3000", 
+			"http://192.168.123.199:3000")
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+        });
+});
 			// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 			builder.Services.AddEndpointsApiExplorer();
 			builder.Services.AddSwaggerGen();
@@ -51,7 +60,7 @@ namespace IOT.Api
 
 			app.UseAuthorization();
 
-
+			app.UseCors("AllowAll");
 			app.MapControllers();
 			app.MapHub<NotificationHub>("/notificationHub");
 			app.Run();

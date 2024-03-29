@@ -21,6 +21,6 @@ public class Buffer
 			existedNotification.TagValue = notification.TagValue;
 		}
 	}
-
+	public List<TagChangedNotification> GetMachineOee() => tagChangedNotifications.Where(x=> x.Topic == "MachineOEE").ToList();
 	public string GetAllTag() => JsonSerializer.Serialize(tagChangedNotifications);
 }
