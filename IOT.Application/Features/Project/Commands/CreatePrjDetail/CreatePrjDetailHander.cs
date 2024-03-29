@@ -73,7 +73,7 @@ namespace IOT.Application.Features.Project.Commands.CreatePrjDetail
 					DetailName = detail.DetailName,
 					ProjectId = request.ProjectId,
 					DetailStatus = 0,
-
+					Machine =  _unitOfWork.machineRepository.Find(x=>x.MachineId== request.MachineId).FirstOrDefault(),
 				};
 
 

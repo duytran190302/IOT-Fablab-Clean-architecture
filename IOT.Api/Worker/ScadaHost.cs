@@ -9,6 +9,7 @@ using IOT.Domain;
 using IOT.Infastructure.Communication;
 using Microsoft.AspNetCore.SignalR;
 using Newtonsoft.Json;
+using System.Text.Json.Nodes;
 
 namespace IOT.Api.Worker;
 
@@ -50,11 +51,13 @@ public class ScadaHost : BackgroundService
     {
         _mqttClient.MessageReceived += OnMqttClientMessageReceivedAsync;
         await _mqttClient.ConnectAsync();
-        await _mqttClient.Subscribe("Fablab/IOT/+");
-        await _mqttClient.Subscribe("Fablab/IOT/+/+");
-    }
+        await _mqttClient.Subscribe("FABLAB/+/+/+/+");
+		//FABLAB/MACHANICAL_MACHINES/KB30/Metric/OEE
+		await _mqttClient.Subscribe("FABLAB/+/+/+");
+		//FABLAB/Environment/Metric/Humidity
+	}
 
-    private async Task OnMqttClientMessageReceivedAsync(MqttMessage e)
+	private async Task OnMqttClientMessageReceivedAsync(MqttMessage e)
     {
         var topic = e.Topic;
         var payloadMessage = e.Payload;
@@ -63,7 +66,7 @@ public class ScadaHost : BackgroundService
             return;
         }
         var topicSegments = topic.Split('/');
-        var topicId = topicSegments[2];
+        var topic1 = topicSegments[1];
 
 
         payloadMessage = payloadMessage.Replace("\\", "");
@@ -76,163 +79,170 @@ public class ScadaHost : BackgroundService
         payloadMessage = payloadMessage.Replace("]", "");
 
 
-        switch (topicId)
+        switch (topic1)
         {
             // gửi chỉ số oee, xử lí lưu database, gửi lên web
-            case "MachineOEE":
-                var machineId = topicSegments[3];
-                var oee = JsonConvert.DeserializeObject<OeeRecieve>(payloadMessage);
+            case "MACHANICAL_MACHINES":
 
-                var A = oee.it / oee.st;
-                var P = oee.ot / oee.it;
-                var oeeDb = new OEE
+
+                switch (topicSegments[4]) 
                 {
+					case "OEE":
+						var machineId = topicSegments[2];
+						var oee = JsonConvert.DeserializeObject<OeeRecieve>(payloadMessage);
+						var A = oee.idleTime / oee.shiftTime;
+						var P = oee.operationTime / oee.idleTime;
+						var oeeDb = new OEE
+						{
+							MachineId = machineId,
+							IdleTime = oee.idleTime,
+							ShiftTime = oee.shiftTime,
+							OperationTime = oee.operationTime,
+							TimeStamp = oee.timestamp,
+							Oee = A * P
+						};
+						try
+						{
+							using (var scope = _scopeFactory.CreateScope())
+							{
+								var _unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                    MachineId = machineId,
-                    IdleTime = oee.it,
-                    ShiftTime = oee.st,
-                    OperationTime = oee.ot,
-                    TimeStamp = oee.timestamp,
-                    Oee = A * P
+								_unitOfWork.oeeRepository.Add(oeeDb);
+								await _unitOfWork.CompleteAsync();
 
+							}
+						}
+						catch (Exception ex)
+						{
+							throw ex;
+						}
+
+						string jsonDb = JsonConvert.SerializeObject(oeeDb);
+                        // ten chu de, ten may, value
+						var notification = new TagChangedNotification(topicSegments[4], machineId, jsonDb);
+						_buffer.Update(notification);
+
+						var oeeSend = new OeeSend
+						{
+							DeviceId = machineId,
+							IdleTime = oee.idleTime,
+							OperationTime = oee.shiftTime,
+							Oee = A * P,
+							ShiftTime = oee.shiftTime,
+							Timestamp = oee.timestamp,
+							Topic = topic1,
+						};
+						string jsonNoti = JsonConvert.SerializeObject(oeeSend);
+						jsonNoti = jsonNoti.Replace("\\", "");
+						jsonNoti = jsonNoti.Replace("\r", "");
+						jsonNoti = jsonNoti.Replace("\n", "");
+						jsonNoti = jsonNoti.Replace(" ", "");
+						await _hubContext.Clients.All.SendAsync("OeeChanged", jsonNoti);
+
+						break;
+                    case "Vibration":
+                    case "Speed":
+                    case "Power":
+					case "MachineStatus":
+					case "Operator":
+                        var data = JsonConvert.DeserializeObject<TempleteObject>(payloadMessage);
+                        var dataSend = new DataMachineSend
+                        {
+                            machineId = topicSegments[2],
+                            name= data.name,
+                            timestamp = data.timestamp,
+                            value = data.value
+                        };
+                        string dataMachine = JsonConvert.SerializeObject(dataSend);
+						await _hubContext.Clients.All.SendAsync("DataMachineChanged", dataMachine);
+						var dataMachineBuffer = new TagChangedNotification(topicSegments[4], topicSegments[2], dataMachine);
+						_buffer.Update(dataMachineBuffer);
+						break;
+                    case "MaterialCodeProducting":
+						var detailOperating = JsonConvert.DeserializeObject<DetailUpdate>(payloadMessage);
+						try
+						{
+							using (var scope = _scopeFactory.CreateScope())
+							{
+								var _unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+								var detail = await _unitOfWork.detailRepository.GetByIdAsync(detailOperating.value);
+								detail.StartTime = detailOperating.timestamp;
+                                detail.EndTime = null;
+								detail.Worker = await _unitOfWork.workerRepository.GetByIdAsync(detailOperating.operatorid);
+								detail.DetailStatus = DetailStatus.working;
+
+								_unitOfWork.detailRepository.Update(detail);
+								await _unitOfWork.CompleteAsync();
+
+							}
+						}
+						catch (Exception ex)
+						{
+							throw ex;
+						}
+						break;
+
+
+                    case "MaterialCodeDone":
+						var detailOperated = JsonConvert.DeserializeObject<DetailUpdate>(payloadMessage);
+						try
+						{
+							using (var scope = _scopeFactory.CreateScope())
+							{
+								var _unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+								var detail = await _unitOfWork.detailRepository.GetByIdAsync(detailOperated.value);
+								detail.EndTime = detailOperated.timestamp;
+								detail.DetailStatus = DetailStatus.completed;
+
+								_unitOfWork.detailRepository.Update(detail);
+								await _unitOfWork.CompleteAsync();
+
+							}
+						}
+						catch (Exception ex)
+						{
+							throw ex;
+						}
+
+						break;
+
+
+
+				}
+                
+
+
+                break;
+            case "Environment":
+				var environment = JsonConvert.DeserializeObject<TempleteObject>(payloadMessage);
+                var environmentSend = new EnvironmentSend
+                {
+                    name = environment.name,
+                    timestamp = environment.timestamp,
+                    value = environment.value,
+                    sensorId = topicSegments[3]
                 };
-                try
-                {
-					using (var scope = _scopeFactory.CreateScope())
-					{
-						var _unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-						_unitOfWork.oeeRepository.Add(oeeDb);
-						await _unitOfWork.CompleteAsync();
+				string jsonEnvironment = JsonConvert.SerializeObject(environmentSend);
+                // moi truong/ ten cam bien/ value
+                var envirBuffer = new TagChangedNotification(topicSegments[1], topicSegments[3], jsonEnvironment);
+                _buffer.Update(envirBuffer);
+				await _hubContext.Clients.All.SendAsync("EnvironmentChanged", jsonEnvironment);
 
-					}
-				}
-                catch (Exception ex)
-                {
-                    throw ex;
-                }
+
+
+				break;
 
 
 
 
 
-                string jsonDb = JsonConvert.SerializeObject(oeeDb);
-                var notification = new TagChangedNotification(topicId, machineId, jsonDb);
-                _buffer.Update(notification);
-
-                var oeeSend = new OeeSend
-                {
-                    DeviceId= machineId,
-                    IdleTime= oee.it,
-                    OperationTime= oee.st,
-                    Oee = A * P,
-                    ShiftTime= oee.st,
-                    Timestamp = oee.timestamp,
-                    Topic = topicId,
-				};
-                string jsonNoti = JsonConvert.SerializeObject(oeeSend);
-                jsonNoti = jsonNoti.Replace("\\", "");
-                jsonNoti = jsonNoti.Replace("\r", "");
-                jsonNoti = jsonNoti.Replace("\n", "");
-                jsonNoti = jsonNoti.Replace(" ", "");
-                await _hubContext.Clients.All.SendAsync("OeeChanged", jsonNoti);
-
-                break;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            case "DetailWorking":
-                var detailIdWorking = topicSegments[3]; // ma chi tiet
-                var detailWorking = JsonConvert.DeserializeObject<DetailUpdate>(payloadMessage);
-
-                try 
-                {
-					using (var scope = _scopeFactory.CreateScope())
-					{
-						var _unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-
-						var detail = await _unitOfWork.detailRepository.GetByIdAsync(detailIdWorking);
-						detail.StartTime = detailWorking.timestamp;
-						detail.Worker = await _unitOfWork.workerRepository.GetByIdAsync(detailWorking.workerId);
-						detail.Machine = await _unitOfWork.machineRepository.GetByIdAsync(detailWorking.machineId);
-						detail.DetailStatus = DetailStatus.working;
-
-						_unitOfWork.detailRepository.Update(detail);
-						await _unitOfWork.CompleteAsync();
-
-					}
-				}
-                catch (Exception ex)
-				{
-                    throw ex;
-                }
-
-
-
-
-
-
-
-
-
-                break;
-            case "DetailCompleted":
-                var detailIdCompleted = topicSegments[3]; // ma chi tiet
-                var detailCompleted = JsonConvert.DeserializeObject<DetailUpdate>(payloadMessage);
-                using (var scope = _scopeFactory.CreateScope())
-                {
-                    var _unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-                    var detail2 = await _unitOfWork.detailRepository.GetByIdAsync(detailIdCompleted);
-
-
-                    detail2.EndTime = detailCompleted.timestamp;
-                    detail2.Worker = await _unitOfWork.workerRepository.GetByIdAsync(detailCompleted.workerId);
-                    detail2.Machine = await _unitOfWork.machineRepository.GetByIdAsync(detailCompleted.machineId);
-                    detail2.DetailStatus = DetailStatus.completed;
-
-                    _unitOfWork.detailRepository.Update(detail2);
-                    await _unitOfWork.CompleteAsync();
-
-
-                }
-
-
-                break;
-
-
-
-
-            // gửi trạng thái máy lên web
-
-            case "MachineStatus":
-                var machineIdStatus = topicSegments[3];
-                var notificationStatus = new TagChangedNotification(topicId, machineIdStatus, payloadMessage);
-                _buffer.Update(notificationStatus);
-
-                string jsonStatus = JsonConvert.SerializeObject(notificationStatus);
-                jsonStatus = jsonStatus.Replace("\\", "");
-                jsonStatus = jsonStatus.Replace("\r", "");
-                jsonStatus = jsonStatus.Replace("\n", "");
-                jsonStatus = jsonStatus.Replace(" ", "");
-                await _hubContext.Clients.All.SendAsync("TagChanged", jsonStatus);
-                break;
             // gửi email warning
             case "GmailWarning":
                 var machineIdWarning = topicSegments[3];
-                var notificationWarning = new TagChangedNotification(topicId, machineIdWarning, payloadMessage);
+                var notificationWarning = new TagChangedNotification(topic1, machineIdWarning, payloadMessage);
                 _buffer.Update(notificationWarning);
 
 
@@ -257,18 +267,8 @@ public class ScadaHost : BackgroundService
 
                 break;
 
-
-
         }
 
-
-        //// xử lí 
-        //if (!string.IsNullOrEmpty(payloadMessage))
-        //{
-        //	var notification = new TagChangedNotification(topicId,"aa", payloadMessage);
-        //	_buffer.Update(notification);
-        //	string json = JsonConvert.SerializeObject(notification);
-        //	await _hubContext.Clients.All.SendAsync("TagChanged", json);
 
 
 

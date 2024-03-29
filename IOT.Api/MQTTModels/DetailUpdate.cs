@@ -2,8 +2,9 @@
 {
 	public class DetailUpdate
 	{
+		public string name { get; set; }
+		public string value { get; set; }
 		public DateTime timestamp { get; set; }
-		public string workerId { get; set; } = string.Empty;
-		public string machineId { get; set; } = string.Empty;
+		public string operatorid { get; set; } = string.Empty;
 	}
 }

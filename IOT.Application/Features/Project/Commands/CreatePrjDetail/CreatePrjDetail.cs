@@ -16,6 +16,7 @@ namespace IOT.Application.Features.Project.Commands.CreatePrjDetail
 		//public DateTime RealEndDate { get; set; }
 		public string Note { get; set; } = string.Empty;
 		public string OderId { get; set; } = string.Empty;
+		public string MachineId {  get; set; } = string.Empty;
 		public List<DetailToCreate> Details { get; set; }
 
 	}

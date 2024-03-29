@@ -4,8 +4,8 @@
 	{
 		public string DetailId { get; set; } = string.Empty;
 		public string DetailName { get; set; } = string.Empty;
-		public DateTime StartTime { get; set; }
-		public DateTime EndTime { get; set; }
+		public DateTime? StartTime { get; set; }
+		public DateTime? EndTime { get; set; }
 
 
 

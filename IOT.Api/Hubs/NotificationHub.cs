@@ -42,6 +42,21 @@ public class NotificationHub : Hub
 		return jsonDb;
 	}
 
+	public string SendAllEnvironment()
+	{
+		var envSend = new List<EnvironmentSend>();
+		List<TagChangedNotification> envs = _buffer.GetEnvironment();
+		foreach (TagChangedNotification env in envs)
+		{
+			var envObjectFromBuffer = JsonConvert.DeserializeObject<EnvironmentSend>(env.TagValue.ToString());
+
+			envSend.Add(envObjectFromBuffer);
+		}
+		string jsonDb = JsonConvert.SerializeObject(envSend);
+		return jsonDb;
+	}
+
+
 	public string SendAll()
 	{
 		string allTags = _buffer.GetAllTag();
