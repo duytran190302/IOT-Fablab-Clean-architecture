@@ -150,7 +150,7 @@ public class ScadaHost : BackgroundService
                         {
                             machineId = topicSegments[2],
                             name= data.name,
-                            timestamp = data.timestamp,
+                            timestamp = data.timestamp, 
                             value = data.value
                         };
                         string dataMachine = JsonConvert.SerializeObject(dataSend);
